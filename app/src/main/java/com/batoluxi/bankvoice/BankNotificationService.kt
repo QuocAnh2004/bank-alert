@@ -55,13 +55,14 @@ class BankNotificationService : NotificationListenerService() {
         if (full.isEmpty()) return
 
         val txn = AmountParser.parseTxn(full)
+        val bankName = getBankName(sbn.packageName)
         val readOutgoing = Prefs.getReadOutgoing(this)
         val shouldSpeak = txn != null && (txn.incoming || readOutgoing)
         Log.d(TAG, "pkg=${sbn.packageName} | $full | txn=$txn")
 
         val result = when {
             txn == null -> "không phải giao dịch"
-            shouldSpeak -> AmountParser.toSpeech(txn)
+            shouldSpeak -> AmountParser.toSpeech(txn, bankName)
             else -> "tiền ra (đang tắt đọc tiền ra)"
         }
         val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
@@ -75,9 +76,16 @@ class BankNotificationService : NotificationListenerService() {
         lastKey = key
         lastTime = now
 
-        speaker.speak(AmountParser.toSpeech(txn))
+        speaker.speak(AmountParser.toSpeech(txn, bankName))
     }
-
+            /** "com.mbmobile" → "MB Bank" (tên app hiển thị trên máy) */
+        private fun getBankName(packageName: String): String = try {
+            val info = packageManager.getApplicationInfo(packageName, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (e: Exception) {
+            packageName   // không tìm thấy thì đọc tạm mã app
+        }
+    
     companion object {
         const val TAG = "BankNoti"
 
