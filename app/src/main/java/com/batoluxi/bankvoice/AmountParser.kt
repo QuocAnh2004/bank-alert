@@ -1,8 +1,12 @@
 package com.batoluxi.bankvoice
 
+/** Một giao dịch: số tiền (đồng) + tiền vào hay tiền ra. */
+data class Txn(val amount: Long, val incoming: Boolean)
+
 /**
- * Tách số tiền NHẬN VÀO từ nội dung thông báo ngân hàng.
- * Trả về null nếu không phải giao dịch tiền vào (tiền ra, OTP, quảng cáo...).
+ * Tách số tiền từ nội dung thông báo ngân hàng.
+ *  - "+500,000" / "nhận 200.000đ"   → tiền VÀO
+ *  - "-500,000" / "bị trừ 200.000đ" → tiền RA
  */
 object AmountParser {
 
@@ -13,34 +17,46 @@ object AmountParser {
     private val PLUS_AMOUNT = Regex(
         """\+\s*($GROUPED)|\+\s*(\d+)\s*$CURRENCY""", RegexOption.IGNORE_CASE
     )
-    private val MINUS_AMOUNT = Regex("""-\s*(?:$GROUPED|\d+\s*$CURRENCY)""", RegexOption.IGNORE_CASE)
+    private val MINUS_AMOUNT = Regex(
+        """-\s*($GROUPED)|-\s*(\d+)\s*$CURRENCY""", RegexOption.IGNORE_CASE
+    )
     private val AMOUNT_WITH_CURRENCY = Regex(
         """($GROUPED|\d+)\s*$CURRENCY""", RegexOption.IGNORE_CASE
     )
     private val INCOMING_WORDS = listOf(
         "nhận", "nhan duoc", "được cộng", "duoc cong", "tiền vào", "tien vao",
-        "ghi có", "ghi co", "credit", "received", "biến động số dư +"
+        "ghi có", "ghi co", "credit", "received"
+    )
+    private val OUTGOING_WORDS = listOf(
+        "bị trừ", "bi tru", "trừ tiền", "tru tien", "ghi nợ", "ghi no", "debit",
+        "chuyển đi", "chuyen di", "tiền ra", "tien ra"
     )
 
-    fun parse(text: String): Long? {
-        // Cách 1: có dấu "+" trước số tiền → chắc chắn tiền vào
-        PLUS_AMOUNT.find(text)?.let { m ->
-            val raw = m.groupValues[1].ifEmpty { m.groupValues[2] }
-            return toLong(raw)
-        }
-        // Có dấu "-" trước số tiền → tiền ra, bỏ qua
-        if (MINUS_AMOUNT.containsMatchIn(text)) return null
+    fun parseTxn(text: String): Txn? {
+        // 1. Dấu +/- trước số tiền là chắc chắn nhất
+        PLUS_AMOUNT.find(text)?.let { m -> return toLong(m)?.let { Txn(it, true) } }
+        MINUS_AMOUNT.find(text)?.let { m -> return toLong(m)?.let { Txn(it, false) } }
 
-        // Cách 2: có từ khoá "nhận / được cộng / ghi có..." + số tiền kèm đơn vị
+        // 2. Không có dấu → dựa vào từ khoá + số tiền kèm đơn vị
         val lower = text.lowercase()
-        if (INCOMING_WORDS.any { it in lower }) {
-            AMOUNT_WITH_CURRENCY.find(text)?.let { return toLong(it.groupValues[1]) }
+        val amount = AMOUNT_WITH_CURRENCY.find(text)?.let { toLong(it.groupValues[1]) } ?: return null
+        return when {
+            INCOMING_WORDS.any { it in lower } -> Txn(amount, true)
+            OUTGOING_WORDS.any { it in lower } -> Txn(amount, false)
+            else -> null
         }
-        return null
     }
+
+    /** Chỉ lấy tiền vào (giữ lại cho màn hình test và unit test). */
+    fun parse(text: String): Long? = parseTxn(text)?.takeIf { it.incoming }?.amount
+
+    private fun toLong(m: MatchResult): Long? = toLong(m.groupValues[1].ifEmpty { m.groupValues[2] })
 
     private fun toLong(raw: String): Long? =
         raw.replace(",", "").replace(".", "").toLongOrNull()?.takeIf { it > 0 }
+
+    fun toSpeech(txn: Txn): String =
+        if (txn.incoming) toSpeech(txn.amount) else "Đã chuyển đi ${toVietnamese(txn.amount)} đồng"
 
     /** 1250000 → "Đã nhận 1 triệu 250 nghìn đồng" */
     fun toSpeech(amount: Long): String = "Đã nhận ${toVietnamese(amount)} đồng"

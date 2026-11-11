@@ -19,7 +19,7 @@ class BankNotificationService : NotificationListenerService() {
 
     override fun onCreate() {
         super.onCreate()
-        speaker = Speaker(this)
+        speaker = Speaker(this) { status -> Prefs.setTts(this, status) }
     }
 
     override fun onDestroy() {
@@ -37,11 +37,20 @@ class BankNotificationService : NotificationListenerService() {
         val full = "$title $text".trim()
         if (full.isEmpty()) return
 
-        val amount = AmountParser.parse(full)
-        Log.d(TAG, "pkg=${sbn.packageName} | $full | amount=$amount")
-        Prefs.setLast(this, "$full\n→ ${amount?.let { AmountParser.toSpeech(it) } ?: "không phải tiền vào"}")
+        val txn = AmountParser.parseTxn(full)
+        val readOutgoing = Prefs.getReadOutgoing(this)
+        val shouldSpeak = txn != null && (txn.incoming || readOutgoing)
+        Log.d(TAG, "pkg=${sbn.packageName} | $full | txn=$txn")
 
-        if (amount == null) return
+        val result = when {
+            txn == null -> "không phải giao dịch"
+            shouldSpeak -> AmountParser.toSpeech(txn)
+            else -> "tiền ra (đang tắt đọc tiền ra)"
+        }
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        Prefs.setLast(this, "[$time] $full\n→ $result")
+
+        if (!shouldSpeak || txn == null) return
 
         val key = "${sbn.packageName}|$full"
         val now = System.currentTimeMillis()
@@ -49,7 +58,7 @@ class BankNotificationService : NotificationListenerService() {
         lastKey = key
         lastTime = now
 
-        speaker.speak(AmountParser.toSpeech(amount))
+        speaker.speak(AmountParser.toSpeech(txn))
     }
 
     companion object {

@@ -1,49 +1,102 @@
 package com.batoluxi.bankvoice
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
-import android.util.Log
+import android.speech.tts.UtteranceProgressListener
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 /**
- * Bọc TextToSpeech cho dễ dùng: gọi speak("...") là đọc.
- * TTS khởi tạo bất đồng bộ, nên câu nào gọi trước khi sẵn sàng sẽ được xếp hàng chờ.
+ * Bọc TextToSpeech:
+ * - Đọc qua luồng âm thanh BÁO THỨC → vẫn kêu khi đang chạy nền / Media = 0 / chế độ im lặng.
+ * - Engine bị hệ thống tắt ngầm → tự khởi động lại và đọc lại câu đó.
+ * - Báo trạng thái (đã đọc / lỗi) qua onStatus để hiện lên màn hình.
  */
-class Speaker(context: Context) : TextToSpeech.OnInitListener {
-
-    private val tts = TextToSpeech(context.applicationContext, this)
+class Speaker(
+    context: Context,
+    private val onStatus: (String) -> Unit = {}
+) {
+    private val appContext = context.applicationContext
+    private val main = Handler(Looper.getMainLooper())
+    private var tts: TextToSpeech? = null
     private var ready = false
     private val pending = mutableListOf<String>()
 
-    override fun onInit(status: Int) {
+    init {
+        create()
+    }
+
+    private fun create() {
+        ready = false
+        tts = TextToSpeech(appContext) { status -> main.post { onInit(status) } }
+    }
+
+    private fun onInit(status: Int) {
+        val t = tts ?: return
         if (status != TextToSpeech.SUCCESS) {
-            Log.e(TAG, "Không khởi tạo được TTS, status=$status")
+            onStatus("❌ Không khởi tạo được giọng đọc (status=$status)")
+            tts = null
             return
         }
-        val result = tts.setLanguage(Locale("vi", "VN"))
-        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-            Log.e(TAG, "Máy chưa có giọng tiếng Việt. Cài 'Speech Services by Google' và tải gói vi-VN.")
+        t.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        )
+        if (t.setLanguage(Locale("vi", "VN")) < 0) {
+            onStatus("⚠️ Máy chưa có giọng tiếng Việt")
         }
+        t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) = onStatus("🗣️ Đang đọc… (${now()})")
+            override fun onDone(utteranceId: String?) = onStatus("✅ Đã đọc xong lúc ${now()}")
+            @Deprecated("Deprecated in Java")
+            override fun onError(utteranceId: String?) = onStatus("❌ Lỗi khi đọc lúc ${now()}")
+            override fun onError(utteranceId: String?, errorCode: Int) =
+                onStatus("❌ Lỗi khi đọc (code=$errorCode) lúc ${now()}")
+        })
         ready = true
-        pending.forEach { speakNow(it) }
+        val queued = pending.toList()
         pending.clear()
+        queued.forEach { speak(it) }
     }
 
     fun speak(text: String) {
-        if (ready) speakNow(text) else pending.add(text)
+        main.post { speakOnMain(text) }
     }
 
-    private fun speakNow(text: String) {
-        // QUEUE_ADD: 2 giao dịch đến liền nhau thì đọc lần lượt, không đè nhau
-        tts.speak(text, TextToSpeech.QUEUE_ADD, null, text.hashCode().toString())
+    private fun speakOnMain(text: String) {
+        val t = tts
+        if (t == null) {           // lần trước khởi tạo hỏng → tạo lại
+            pending.add(text)
+            create()
+            return
+        }
+        if (!ready) {              // đang khởi tạo → xếp hàng chờ
+            pending.add(text)
+            return
+        }
+        val result = t.speak(text, TextToSpeech.QUEUE_ADD, null, "u${System.nanoTime()}")
+        if (result == TextToSpeech.ERROR) {
+            // Engine bị hệ thống tắt ngầm → khởi động lại rồi đọc lại
+            onStatus("⚠️ Giọng đọc bị ngắt, đang khởi động lại… (${now()})")
+            pending.add(text)
+            t.shutdown()
+            create()
+        }
     }
 
     fun shutdown() {
-        tts.stop()
-        tts.shutdown()
+        main.post {
+            tts?.stop()
+            tts?.shutdown()
+            tts = null
+        }
     }
 
-    companion object {
-        private const val TAG = "Speaker"
-    }
+    private fun now(): String = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 }

@@ -22,6 +22,20 @@ class AmountParserTest {
 
     @Test fun soDienThoai() = assertNull(AmountParser.parse("Goi +84912345678 de duoc ho tro"))
 
+    @Test fun tienRa_parseTxn() =
+        assertEquals(Txn(200_000L, false), AmountParser.parseTxn("TK 1234 -200,000VND luc 08:00"))
+
+    @Test fun tienRa_tuKhoa() =
+        assertEquals(Txn(50_000L, false), AmountParser.parseTxn("Tai khoan bi tru 50.000 VND"))
+
+    @Test fun vietinbank_thatTe() = assertEquals(
+        Txn(2_000L, true),
+        AmountParser.parseTxn("Tin biến động số dư VietinBank:11/11/2026 14:00 TK:1048 GD:+2,000 VND SDC:1,693,173 VND ND:CT DEN chuyen tien")
+    )
+
+    @Test fun docTienRa() =
+        assertEquals("Đã chuyển đi 50 nghìn đồng", AmountParser.toSpeech(Txn(50_000L, false)))
+
     @Test fun docTien() =
         assertEquals("1 triệu 250 nghìn", AmountParser.toVietnamese(1_250_000))
 }

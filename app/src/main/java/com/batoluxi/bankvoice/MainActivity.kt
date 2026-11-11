@@ -10,6 +10,7 @@ import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
@@ -33,7 +34,10 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        speaker = Speaker(this)
+        speaker = Speaker(this) { status ->
+            Prefs.setTts(this, status)
+            runOnUiThread { refreshStatus() }
+        }
         txtStatus = findViewById(R.id.txtStatus)
         txtLast = findViewById(R.id.txtLast)
 
@@ -48,6 +52,10 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.btnTestVoice).setOnClickListener {
             speaker.speak(AmountParser.toSpeech(1_250_000))
         }
+
+        val swOutgoing = findViewById<Switch>(R.id.swOutgoing)
+        swOutgoing.isChecked = Prefs.getReadOutgoing(this)
+        swOutgoing.setOnCheckedChangeListener { _, checked -> Prefs.setReadOutgoing(this, checked) }
 
         setupBankList()
     }
@@ -95,6 +103,10 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        refreshStatus()
+    }
+
+    private fun refreshStatus() {
         val granted = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
         val banks = Prefs.getBanks(this).size
         txtStatus.text = when {
@@ -103,7 +115,9 @@ class MainActivity : Activity() {
             else -> "✅ Đang lắng nghe $banks app"
         }
         val last = Prefs.getLast(this)
-        txtLast.text = if (last.isEmpty()) "Thông báo gần nhất: (chưa có)" else "Thông báo gần nhất:\n$last"
+        val tts = Prefs.getTts(this).ifEmpty { "(chưa đọc lần nào)" }
+        txtLast.text = (if (last.isEmpty()) "Thông báo gần nhất: (chưa có)" else "Thông báo gần nhất:\n$last") +
+            "\n\nGiọng đọc: $tts"
     }
 
     override fun onDestroy() {

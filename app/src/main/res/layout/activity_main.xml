@@ -37,6 +37,15 @@
         android:layout_height="wrap_content"
         android:text="🔊 Thử giọng đọc" />
 
+    <Switch
+        android:id="@+id/swOutgoing"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:padding="8dp"
+        android:text="Đọc cả tiền ra (khi bị trừ tiền)"
+        android:textSize="16sp" />
+
     <TextView
         android:id="@+id/txtLast"
         android:layout_width="match_parent"
