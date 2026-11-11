@@ -55,8 +55,8 @@ object AmountParser {
     private fun toLong(raw: String): Long? =
         raw.replace(",", "").replace(".", "").toLongOrNull()?.takeIf { it > 0 }
 
-    fun toSpeech(txn: Txn): String =
-        if (txn.incoming) toSpeech(txn.amount) else "Đã chuyển đi ${toVietnamese(txn.amount)} đồng"
+    fun toSpeech(txn: Txn, bankName: String): String =
+        if (txn.incoming) "${toSpeech(txn.amount)} từ $bankName" else  "Đã chuyển đi ${toVietnamese(txn.amount)} đồng từ $bankName"
 
     /** 1250000 → "Đã nhận 1 triệu 250 nghìn đồng" */
     fun toSpeech(amount: Long): String = "Đã nhận ${toVietnamese(amount)} đồng"
