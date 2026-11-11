@@ -103,15 +103,23 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        // Mở app mà mất kết nối (VD: vừa bị "Xoá tất cả") → ép kết nối lại
+        if (isGranted() && !BankNotificationService.connected) {
+            BankNotificationService.forceRebind(this)
+            txtStatus.postDelayed({ refreshStatus() }, 2000)
+        }
         refreshStatus()
     }
 
+    private fun isGranted() =
+        NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+
     private fun refreshStatus() {
-        val granted = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
         val banks = Prefs.getBanks(this).size
         txtStatus.text = when {
-            !granted -> "⚠️ Chưa cấp quyền đọc thông báo (bấm nút 1)"
+            !isGranted() -> "⚠️ Chưa cấp quyền đọc thông báo (bấm nút 1)"
             banks == 0 -> "⚠️ Chưa chọn app ngân hàng (tick ở danh sách bên dưới)"
+            !BankNotificationService.connected -> "🔄 Đang kết nối lại… (chờ vài giây)"
             else -> "✅ Đang lắng nghe $banks app"
         }
         val last = Prefs.getLast(this)
